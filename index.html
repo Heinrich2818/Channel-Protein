@@ -98,20 +98,27 @@
 
     let table;
 
-    // Range filtering (RMSD, iPAE, pLDDT)
-    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
-      if (settings.nTable?.id !== 'dataTable') return true;
-      const row = table.row(dataIndex).data();
-      const rmsd = row?.RMSD, iPAE = row?.iPAE, pLDDT = row?.pLDDT;
+    /* ---------- Robust numeric range filter (safe during init) ---------- */
+    $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+      // Only affect our table
+      if (!settings.nTable || settings.nTable.id !== 'dataTable') return true;
 
-      const get = id => parseFloat(document.getElementById(id).value);
+      // Safe access to the original row object during all draw phases
+      const row = (settings.aoData && settings.aoData[dataIndex] && settings.aoData[dataIndex]._aData) || {};
+      const rmsd  = (row.RMSD  === "" || row.RMSD  == null) ? NaN : Number(row.RMSD);
+      const iPAE  = (row.iPAE  === "" || row.iPAE  == null) ? NaN : Number(row.iPAE);
+      const pLDDT = (row.pLDDT === "" || row.pLDDT == null) ? NaN : Number(row.pLDDT);
+
+      const val = id => parseFloat(document.getElementById(id)?.value);
       const inRange = (v, min, max) =>
-        (isNaN(min) || v >= min || v === "") && (isNaN(max) || v <= max || v === "");
+        (isNaN(min) || (isNaN(v) ? true : v >= min)) &&
+        (isNaN(max) || (isNaN(v) ? true : v <= max));
 
-      return inRange(rmsd, get('rmsdMin'), get('rmsdMax')) &&
-             inRange(iPAE, get('paeMin'), get('paeMax')) &&
-             inRange(pLDDT, get('plddtMin'), get('plddtMax'));
+      return inRange(rmsd,  val('rmsdMin'),  val('rmsdMax')) &&
+             inRange(iPAE,  val('paeMin'),   val('paeMax'))  &&
+             inRange(pLDDT, val('plddtMin'), val('plddtMax'));
     });
+    /* ------------------------------------------------------------------- */
 
     function buildChannelFilter(rows) {
       const select = document.getElementById('channelFilter');
@@ -210,7 +217,7 @@
         table.search(e.target.value).draw();
       });
 
-      // Range filters
+      // Range filters live update
       ['rmsdMin','rmsdMax','paeMin','paeMax','plddtMin','plddtMax'].forEach(id => {
         document.getElementById(id).addEventListener('input', () => {
           table.draw();
@@ -261,6 +268,4 @@
     });
   </script>
 </body>
-
 </html>
-
