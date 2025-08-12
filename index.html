@@ -1,271 +1,162 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ion Channel Proteins</title>
+<script>
+  const CSV_URL = `data.csv?v=${Date.now()}`; // cache-busting
+  const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
-  <!-- DataTables core + extensions -->
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
-  <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.dataTables.min.css">
-  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css">
+  // Map headers and coerce numerics
+  function normalizeRows(rows) {
+    const map = {
+      "channel":"Channel","design":"Design","n":"n",
+      "mpnn":"MPNN","plddt":"pLDDT","i_ptm":"iPTM","i_pae":"iPAE","rmsd":"RMSD","seq":"Sequence"
+    };
+    const rawHeaders = Object.keys(rows[0] || {});
+    const headers = rawHeaders.map(h => map[h.trim().toLowerCase()] || h.trim());
 
-  <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif; margin: 24px; }
-    .container { max-width: 1200px; margin: 0 auto; }
-    h1 { font-size: 22px; margin-bottom: 12px; }
-    .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 12px 0 18px; }
-    .toolbar input, .toolbar select { padding: 8px 10px; border: 1px solid #ddd; border-radius: 10px; outline: none; }
-    .toolbar .range { display: flex; gap: 6px; align-items: center; }
-    .hint { color: #666; font-size: 13px; }
-    table.dataTable thead th { white-space: nowrap; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
-    .footer { margin-top: 16px; color: #888; font-size: 12px; }
-    .copy-btn { margin-left: 8px; padding: 2px 8px; border: 1px solid #ccc; border-radius: 8px; background: #f7f7f7; cursor: pointer; }
-    details > summary { cursor: pointer; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>Ion Channel Protein Table</h1>
-
-    <div class="toolbar">
-      <input id="globalSearch" type="search" placeholder="Search across all columns…" style="width:260px;" />
-      <div class="range">
-        <label>RMSD:</label>
-        <input id="rmsdMin" type="number" inputmode="decimal" step="any" placeholder="min" style="width:90px;">
-        <span>—</span>
-        <input id="rmsdMax" type="number" inputmode="decimal" step="any" placeholder="max" style="width:90px;">
-      </div>
-      <div class="range">
-        <label>iPAE:</label>
-        <input id="paeMin" type="number" inputmode="decimal" step="any" placeholder="min" style="width:90px;">
-        <span>—</span>
-        <input id="paeMax" type="number" inputmode="decimal" step="any" placeholder="max" style="width:90px;">
-      </div>
-      <div class="range">
-        <label>pLDDT:</label>
-        <input id="plddtMin" type="number" inputmode="decimal" step="any" placeholder="min" style="width:90px;">
-        <span>—</span>
-        <input id="plddtMax" type="number" inputmode="decimal" step="any" placeholder="max" style="width:90px;">
-      </div>
-      <select id="channelFilter">
-        <option value="">All Channels</option>
-      </select>
-      <span class="hint">Tip: Click a sequence to expand; use the button to copy.</span>
-    </div>
-
-    <table id="dataTable" class="display nowrap" style="width:100%"></table>
-    <div class="footer" id="status">Loading…</div>
-  </div>
-
-  <!-- Dependencies -->
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
-  <script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-
-  <script>
-    const CSV_URL = `data.csv?v=${Date.now()}`; // cache-busting
-    const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-
-    // Normalize headers and coerce numeric fields
-    function normalizeRows(rows) {
-      const map = {
-        "channel":"Channel","design":"Design","n":"n",
-        "mpnn":"MPNN","plddt":"pLDDT","i_ptm":"iPTM","i_pae":"iPAE","rmsd":"RMSD","seq":"Sequence"
-      };
-      const rawHeaders = Object.keys(rows[0]);
-      const headers = rawHeaders.map(h => map[h.trim().toLowerCase()] || h.trim());
-
-      const data = rows.map(r => {
-        const obj = {};
-        rawHeaders.forEach((rh,i) => obj[headers[i]] = (r[rh] ?? "").toString().trim());
-
-        // numeric coercion
-        ["MPNN","pLDDT","iPTM","iPAE","RMSD","n","Design"].forEach(k=>{
-          if (obj[k] !== "") obj[k] = Number(obj[k]);
-        });
-
-        const seq = (obj["Sequence"] || "").replace(/\s/g,"");
-        obj["SeqLen"] = seq.length;
-        return obj;
+    const data = rows.map(r => {
+      const obj = {};
+      rawHeaders.forEach((rh,i) => obj[headers[i]] = (r[rh] ?? "").toString().trim());
+      // numbers
+      ["MPNN","pLDDT","iPTM","iPAE","RMSD","n","Design"].forEach(k=>{
+        if (obj[k] !== "") obj[k] = Number(obj[k]);
       });
-      return data;
-    }
-
-    let table;
-
-    /* ---------- Robust numeric range filter (safe during init) ---------- */
-    $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
-      // Only affect our table
-      if (!settings.nTable || settings.nTable.id !== 'dataTable') return true;
-
-      // Safe access to the original row object during all draw phases
-      const row = (settings.aoData && settings.aoData[dataIndex] && settings.aoData[dataIndex]._aData) || {};
-      const rmsd  = (row.RMSD  === "" || row.RMSD  == null) ? NaN : Number(row.RMSD);
-      const iPAE  = (row.iPAE  === "" || row.iPAE  == null) ? NaN : Number(row.iPAE);
-      const pLDDT = (row.pLDDT === "" || row.pLDDT == null) ? NaN : Number(row.pLDDT);
-
-      const val = id => parseFloat(document.getElementById(id)?.value);
-      const inRange = (v, min, max) =>
-        (isNaN(min) || (isNaN(v) ? true : v >= min)) &&
-        (isNaN(max) || (isNaN(v) ? true : v <= max));
-
-      return inRange(rmsd,  val('rmsdMin'),  val('rmsdMax')) &&
-             inRange(iPAE,  val('paeMin'),   val('paeMax'))  &&
-             inRange(pLDDT, val('plddtMin'), val('plddtMax'));
+      const seq = (obj["Sequence"] || "").replace(/\s/g,"");
+      obj["SeqLen"] = seq.length;
+      return obj;
     });
-    /* ------------------------------------------------------------------- */
+    return data;
+  }
 
-    function buildChannelFilter(rows) {
-      const select = document.getElementById('channelFilter');
-      const uniq = Array.from(new Set(rows.map(r => r["Channel"]).filter(Boolean))).sort();
-      uniq.forEach(ch => {
-        const opt = document.createElement('option');
-        opt.value = ch;
-        opt.textContent = ch;
-        select.appendChild(opt);
-      });
-      select.addEventListener('change', () => {
-        table.column(0).search(select.value ? `^${select.value}$` : '', true, false).draw();
-      });
-    }
+  let table;
 
-    function initTable(rows) {
-      buildChannelFilter(rows);
+  /* Robust numeric range filter — safe before table exists */
+  $.fn.dataTable.ext.search = $.fn.dataTable.ext.search || [];
+  $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+    if (!settings.nTable || settings.nTable.id !== 'dataTable') return true;
 
-      table = $('#dataTable').DataTable({
-        data: rows,
-        responsive: true,
-        deferRender: true,
-        pageLength: 10,
-        lengthMenu: [10, 25, 50, 100],
-        dom: 'Bfrtip',
-        buttons: [{ extend: 'csvHtml5', text: 'Export filtered CSV', title: 'ion_channel_table' }],
-        columns: [
-          { title: 'Channel', data: 'Channel', className: 'all' },
-          { title: 'Design', data: 'Design', className: 'min-tablet' },
-          { title: 'n', data: 'n', className: 'min-tablet' },
-          {
-            title: 'MPNN', data: 'MPNN', className: 'min-tablet',
-            render: (d, type) => {
-              const v = (d === "" || d == null) ? NaN : Number(d);
-              if (type === 'sort' || type === 'type') return isNaN(v) ? -Infinity : v;
-              return isNaN(v) ? '' : v.toFixed(6);
-            }
-          },
-          {
-            title: 'pLDDT', data: 'pLDDT', className: 'all',
-            render: (d, type) => {
-              const v = (d === "" || d == null) ? NaN : Number(d);
-              if (type === 'sort' || type === 'type') return isNaN(v) ? -Infinity : v;
-              return isNaN(v) ? '' : v.toFixed(6);
-            }
-          },
-          {
-            title: 'iPTM', data: 'iPTM', className: 'min-tablet',
-            render: (d, type) => {
-              const v = (d === "" || d == null) ? NaN : Number(d);
-              if (type === 'sort' || type === 'type') return isNaN(v) ? -Infinity : v;
-              return isNaN(v) ? '' : v.toFixed(6);
-            }
-          },
-          {
-            title: 'iPAE', data: 'iPAE', className: 'min-tablet',
-            render: (d, type) => {
-              const v = (d === "" || d == null) ? NaN : Number(d);
-              if (type === 'sort' || type === 'type') return isNaN(v) ? -Infinity : v;
-              return isNaN(v) ? '' : v.toFixed(6);
-            }
-          },
-          {
-            title: 'RMSD', data: 'RMSD', className: 'all',
-            render: (d, type) => {
-              const v = (d === "" || d == null) ? NaN : Number(d);
-              if (type === 'sort' || type === 'type') return isNaN(v) ? -Infinity : v;
-              return isNaN(v) ? '' : v.toFixed(6);
-            }
-          },
-          { title: 'SeqLen', data: 'SeqLen', className: 'min-tablet', searchable: false },
-          {
-            title: 'Sequence',
-            data: 'Sequence',
-            className: 'none',
-            orderable: false,
-            render: (data, type, row) => {
-              if (type !== 'display') return data;
-              const seq = data || '';
-              const len = row.SeqLen ?? (seq.replace(/\s/g,"").length);
-              const short = len > 30 ? `${seq.slice(0,12)}…${seq.slice(-12)}` : seq;
-              return `<details>
-                        <summary><code>${esc(short)}</code> <small>(len ${len})</small></summary>
-                        <div style="white-space:pre-wrap;word-break:break-all;">
-                          <code>${esc(seq)}</code>
-                          <button class="copy-btn" data-seq="${esc(seq)}">Copy sequence</button>
-                        </div>
-                      </details>`;
-            }
+    // Safe access during early draws
+    const row = (settings.aoData && settings.aoData[dataIndex] && settings.aoData[dataIndex]._aData) || {};
+    const num = v => (v === "" || v == null ? NaN : Number(v));
+    const rmsd  = num(row.RMSD);
+    const iPAE  = num(row.iPAE);
+    const pLDDT = num(row.pLDDT);
+
+    const val = id => parseFloat(document.getElementById(id)?.value);
+    const inRange = (v, min, max) =>
+      (isNaN(min) || (isNaN(v) ? true : v >= min)) &&
+      (isNaN(max) || (isNaN(v) ? true : v <= max));
+
+    return inRange(rmsd,  val('rmsdMin'),  val('rmsdMax')) &&
+           inRange(iPAE,  val('paeMin'),   val('paeMax'))  &&
+           inRange(pLDDT, val('plddtMin'), val('plddtMax'));
+  });
+
+  function buildChannelFilter(rows) {
+    const select = document.getElementById('channelFilter');
+    const uniq = Array.from(new Set(rows.map(r => r["Channel"]).filter(Boolean))).sort();
+    uniq.forEach(ch => {
+      const opt = document.createElement('option');
+      opt.value = ch; opt.textContent = ch;
+      select.appendChild(opt);
+    });
+    select.addEventListener('change', () => {
+      if (!table) return;
+      table.column(0).search(select.value ? `^${select.value}$` : '', true, false).draw();
+    });
+  }
+
+  function initTable(rows) {
+    buildChannelFilter(rows);
+
+    table = $('#dataTable').DataTable({
+      data: rows,
+      responsive: true,
+      deferRender: true,
+      pageLength: 10,
+      lengthMenu: [10, 25, 50, 100],
+      dom: 'Bfrtip',
+      buttons: [{ extend: 'csvHtml5', text: 'Export filtered CSV', title: 'ion_channel_table' }],
+      columns: [
+        { title: 'Channel', data: 'Channel', className: 'all' },
+        { title: 'Design',  data: 'Design',  className: 'min-tablet' },
+        { title: 'n',       data: 'n',       className: 'min-tablet' },
+        { title: 'MPNN',    data: 'MPNN',    className: 'min-tablet',
+          render: (d,t)=>{ const v=Number(d); if(t==='sort'||t==='type') return isNaN(v)?-Infinity:v; return isNaN(v)?'':v.toFixed(6);} },
+        { title: 'pLDDT',   data: 'pLDDT',   className: 'all',
+          render: (d,t)=>{ const v=Number(d); if(t==='sort'||t==='type') return isNaN(v)?-Infinity:v; return isNaN(v)?'':v.toFixed(6);} },
+        { title: 'iPTM',    data: 'iPTM',    className: 'min-tablet',
+          render: (d,t)=>{ const v=Number(d); if(t==='sort'||t==='type') return isNaN(v)?-Infinity:v; return isNaN(v)?'':v.toFixed(6);} },
+        { title: 'iPAE',    data: 'iPAE',    className: 'min-tablet',
+          render: (d,t)=>{ const v=Number(d); if(t==='sort'||t==='type') return isNaN(v)?-Infinity:v; return isNaN(v)?'':v.toFixed(6);} },
+        { title: 'RMSD',    data: 'RMSD',    className: 'all',
+          render: (d,t)=>{ const v=Number(d); if(t==='sort'||t==='type') return isNaN(v)?-Infinity:v; return isNaN(v)?'':v.toFixed(6);} },
+        { title: 'SeqLen',  data: 'SeqLen',  className: 'min-tablet', searchable: false },
+        { title: 'Sequence', data: 'Sequence', className: 'none', orderable: false,
+          render: (data, type, row) => {
+            if (type !== 'display') return data;
+            const seq = data || '';
+            const len = row.SeqLen ?? (seq.replace(/\s/g,"").length);
+            const short = len > 30 ? `${seq.slice(0,12)}…${seq.slice(-12)}` : seq;
+            return `<details>
+                      <summary><code>${esc(short)}</code> <small>(len ${len})</small></summary>
+                      <div style="white-space:pre-wrap;word-break:break-all;">
+                        <code>${esc(seq)}</code>
+                        <button class="copy-btn" data-seq="${esc(seq)}">Copy sequence</button>
+                      </div>
+                    </details>`;
           }
-        ]
-      });
-
-      // Global search
-      document.getElementById('globalSearch').addEventListener('input', (e) => {
-        table.search(e.target.value).draw();
-      });
-
-      // Range filters live update
-      ['rmsdMin','rmsdMax','paeMin','paeMax','plddtMin','plddtMax'].forEach(id => {
-        document.getElementById(id).addEventListener('input', () => {
-          table.draw();
-          const total = table.rows({ filter: 'applied' }).count();
-          document.getElementById('status').textContent =
-            `Loaded ${table.rows().count()} records • ${total} after filters`;
-        });
-      });
-
-      // Copy sequence (event delegation)
-      document.addEventListener('click', async (e) => {
-        const btn = e.target.closest('.copy-btn');
-        if (!btn) return;
-        const seq = btn.getAttribute('data-seq')?.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&') || '';
-        try {
-          await navigator.clipboard.writeText(seq);
-          btn.textContent = 'Copied';
-          setTimeout(() => btn.textContent = 'Copy sequence', 1000);
-        } catch {
-          btn.textContent = 'Copy failed';
-          setTimeout(() => btn.textContent = 'Copy sequence', 1000);
         }
+      ]
+    });
+
+    document.getElementById('globalSearch').addEventListener('input', e => {
+      table.search(e.target.value).draw();
+    });
+
+    // live range filters
+    ['rmsdMin','rmsdMax','paeMin','paeMax','plddtMin','plddtMax'].forEach(id => {
+      document.getElementById(id).addEventListener('input', () => {
+        table.draw();
+        const total = table.rows({ filter: 'applied' }).count();
+        document.getElementById('status').textContent =
+          `Loaded ${table.rows().count()} records • ${total} after filters`;
       });
+    });
 
-      document.getElementById('status').textContent = `Loaded ${rows.length} records`;
-    }
-
-    // Load CSV
-    Papa.parse(CSV_URL, {
-      download: true,
-      header: true,
-      skipEmptyLines: true,
-      complete: (res) => {
-        try {
-          let rows = res.data.filter(r => r && Object.values(r).some(v => String(v ?? "").trim() !== ""));
-          if (!rows.length) throw new Error("CSV is empty or header row is missing.");
-          const data = normalizeRows(rows);
-          initTable(data);
-        } catch (e) {
-          document.getElementById('status').textContent = "Parse failed: " + e.message;
-          console.error(e);
-        }
-      },
-      error: (err) => {
-        document.getElementById('status').textContent = "Failed to load data.csv (is GitHub Pages deployed?)";
-        console.error(err);
+    // copy sequence
+    document.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.copy-btn');
+      if (!btn) return;
+      const seq = btn.getAttribute('data-seq')?.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&') || '';
+      try {
+        await navigator.clipboard.writeText(seq);
+        btn.textContent = 'Copied';
+        setTimeout(() => btn.textContent = 'Copy sequence', 1000);
+      } catch {
+        btn.textContent = 'Copy failed';
+        setTimeout(() => btn.textContent = 'Copy sequence', 1000);
       }
     });
-  </script>
-</body>
-</html>
+
+    document.getElementById('status').textContent = `Loaded ${rows.length} records`;
+  }
+
+  // Load CSV
+  Papa.parse(CSV_URL, {
+    download: true,
+    header: true,
+    skipEmptyLines: true,
+    complete: (res) => {
+      try {
+        const rows = (res.data || []).filter(r => r && Object.values(r).some(v => String(v ?? "").trim() !== ""));
+        if (!rows.length) throw new Error("CSV is empty or header row is missing.");
+        initTable(normalizeRows(rows));
+      } catch (e) {
+        document.getElementById('status').textContent = "Parse failed: " + e.message;
+        console.error(e);
+      }
+    },
+    error: (err) => {
+      document.getElementById('status').textContent = "Failed to load data.csv (is GitHub Pages deployed?)";
+      console.error(err);
+    }
+  });
+</script>
