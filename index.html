@@ -236,7 +236,7 @@
                         return `<td class="px-6 py-4">${content}</td>`;
                     }).join('');
 
-                    const pdbFileName = `design_${row.design}_${row.n}.pdb`;
+                    const pdbFileName = `design${row.design}_n${row.n}.pdb`;
                     const pdbFileUrl = PATH_TO_PDB_FOLDER + pdbFileName;
 
                     const actionsCell = `
