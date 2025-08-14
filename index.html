@@ -130,13 +130,15 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- File Path Configuration ---
-            // This logic correctly determines the base path for GitHub Pages.
-            const repoName = window.location.pathname.split('/')[1];
-            const BASE_PATH = window.location.hostname.includes('github.io') ? `/${repoName}/` : '/';
+            // --- GitHub Raw Content URL Configuration ---
+            const GITHUB_USERNAME = 'Heinrich2818';
+            const GITHUB_REPO = 'Channel-Protein';
+            const GITHUB_BRANCH = 'main';
             
-            const PATH_TO_CSV = `${BASE_PATH}Protein_data/csv/data.csv`;
-            const PATH_TO_PDB_FOLDER = `${BASE_PATH}Protein_data/pdb/`; // MUST end with a slash!
+            const BASE_URL = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH}/`;
+            
+            const PATH_TO_CSV = `${BASE_URL}Protein_data/csv/data.csv`;
+            const PATH_TO_PDB_FOLDER = `${BASE_URL}Protein_data/pdb/`; // MUST end with a slash!
 
             // DOM element references
             const tableBody = document.getElementById('data-table-body');
