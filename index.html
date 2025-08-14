@@ -131,8 +131,12 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // --- File Path Configuration ---
-            const PATH_TO_CSV = './Protein_data/csv/data.csv';
-            const PATH_TO_PDB_FOLDER = './Protein_data/pdb/'; // MUST end with a slash!
+            // This logic correctly determines the base path for GitHub Pages.
+            const repoName = window.location.pathname.split('/')[1];
+            const BASE_PATH = window.location.hostname.includes('github.io') ? `/${repoName}/` : '/';
+            
+            const PATH_TO_CSV = `${BASE_PATH}Protein_data/csv/data.csv`;
+            const PATH_TO_PDB_FOLDER = `${BASE_PATH}Protein_data/pdb/`; // MUST end with a slash!
 
             // DOM element references
             const tableBody = document.getElementById('data-table-body');
@@ -332,11 +336,9 @@
                 buttonElement.disabled = true;
 
                 try {
-                    // Construct the full URL relative to the page's location
-                    const absoluteUrl = new URL(url, window.location.href).href;
-                    const response = await fetch(absoluteUrl);
+                    const response = await fetch(url);
                     if (!response.ok) {
-                        throw new Error(`Network response was not ok: ${response.statusText}`);
+                        throw new Error(`Network response was not ok: ${response.statusText}. Check the file path and ensure the file exists in your repository.`);
                     }
                     const blob = await response.blob();
                     const objectUrl = URL.createObjectURL(blob);
@@ -345,13 +347,13 @@
                     a.href = objectUrl;
                     a.download = filename;
                     document.body.appendChild(a);
-a.click();
+                    a.click();
                     document.body.removeChild(a);
 
                     URL.revokeObjectURL(objectUrl);
                 } catch (error) {
                     console.error('Download failed:', error);
-                    alert(`Failed to download ${filename}. Check console for details.`);
+                    alert(`Failed to download ${filename}. Details: ${error.message}`);
                 } finally {
                     buttonElement.textContent = originalText;
                     buttonElement.disabled = false;
