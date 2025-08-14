@@ -115,16 +115,10 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- GitHub Configuration ---
-            // IMPORTANT: Replace these with your own GitHub details to deploy.
-            const GITHUB_USERNAME = 'Heinrich2818';
-            const GITHUB_REPO = 'Channel-Protein';
-            const GITHUB_BRANCH = 'main'; // Or your default branch name
-            const PATH_TO_CSV = 'Protein_data/csv/mpnn_results.csv'; // e.g., 'data/mpnn_results.csv' or just 'mpnn_results.csv'
-            const PATH_TO_PDB_FOLDER = 'Protein_data/pdb/'; // e.g., 'data/pdbs/' - MUST end with a slash!
-
-            // Base URL for fetching raw files from GitHub
-            const GITHUB_BASE_URL = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH}/`;
+            // --- File Path Configuration ---
+            // These paths are relative to the location of your index.html file.
+            const PATH_TO_CSV = 'Protein_data/csv/mpnn_results.csv';
+            const PATH_TO_PDB_FOLDER = 'Protein_data/pdb/'; // MUST end with a slash!
 
             // DOM element references
             const tableBody = document.getElementById('data-table-body');
@@ -143,19 +137,18 @@
             let allData = [];
             let headers = [];
 
-            async function loadRemoteData() {
-                const csvUrl = GITHUB_BASE_URL + PATH_TO_CSV;
+            async function loadData() {
                 try {
-                    const response = await fetch(csvUrl);
+                    const response = await fetch(PATH_TO_CSV);
                     if (!response.ok) {
-                        throw new Error(`Network response was not ok: ${response.statusText}. Check your GitHub configuration and file paths.`);
+                        throw new Error(`Network response was not ok: ${response.statusText}. Check if the file path is correct.`);
                     }
                     const csvText = await response.text();
                     parseCSV(csvText);
                     populateFilters();
                     renderTable(allData);
                 } catch (error) {
-                    console.error("Failed to load or parse CSV from GitHub:", error);
+                    console.error("Failed to load or parse CSV:", error);
                     tableBody.innerHTML = `<tr><td colspan="10" class="text-center p-8 text-red-500 font-semibold">${error.message}</td></tr>`;
                 } finally {
                     loader.style.display = 'none';
@@ -163,7 +156,8 @@
             }
 
             function parseCSV(text) {
-                const lines = text.trim().split('\n');
+                // Handle potential carriage return characters (\r) from different OS
+                const lines = text.trim().replace(/\r/g, '').split('\n');
                 headers = lines[0].split(',').map(h => h.trim());
                 headers.push('Actions'); // Add new column for buttons
                 
@@ -210,7 +204,7 @@
                     }).join('');
 
                     const pdbFileName = `design_${row.design}_${row.n}.pdb`;
-                    const pdbFileUrl = GITHUB_BASE_URL + PATH_TO_PDB_FOLDER + pdbFileName;
+                    const pdbFileUrl = PATH_TO_PDB_FOLDER + pdbFileName;
 
                     const actionsCell = `
                         <td class="px-6 py-4 flex items-center space-x-2">
@@ -297,7 +291,7 @@
             });
 
             // --- Initial Load ---
-            loadRemoteData();
+            loadData();
         });
     </script>
 
