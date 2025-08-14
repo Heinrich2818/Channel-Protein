@@ -149,6 +149,7 @@
 
             // Data and state storage
             let allData = [];
+            let currentFilteredAndSortedData = [];
             let headers = [];
             let sortKey = 'design';
             let sortDirection = 'asc';
@@ -256,7 +257,7 @@
             }
 
             function renderPagination(totalItems, itemsPerPage) {
-                if (itemsPerPage === Infinity) {
+                if (itemsPerPage === Infinity || totalItems === 0) {
                     paginationControls.style.display = 'none';
                     return;
                 }
@@ -293,8 +294,6 @@
                     });
                 }
 
-                const totalFilteredCount = filteredData.length;
-
                 filteredData.sort((a, b) => {
                     const valA = a[sortKey];
                     const valB = b[sortKey];
@@ -311,14 +310,23 @@
                     return sortDirection === 'asc' ? comparison : -comparison;
                 });
                 
-                const startIndex = (currentPage - 1) * recordsToShow;
-                const endIndex = startIndex + recordsToShow;
-                const paginatedData = filteredData.slice(startIndex, endIndex);
+                // Store the full filtered and sorted list
+                currentFilteredAndSortedData = filteredData;
                 
-                rowCountDisplay.textContent = `Showing ${paginatedData.length} of ${totalFilteredCount} results`;
+                let paginatedData;
+
+                // FIX: Correctly handle pagination for "All" records
+                if (recordsToShow === Infinity) {
+                    paginatedData = currentFilteredAndSortedData;
+                } else {
+                    const startIndex = (currentPage - 1) * recordsToShow;
+                    paginatedData = currentFilteredAndSortedData.slice(startIndex, startIndex + recordsToShow);
+                }
+                
+                rowCountDisplay.textContent = `Showing ${paginatedData.length} of ${currentFilteredAndSortedData.length} results`;
 
                 renderTable(paginatedData);
-                renderPagination(totalFilteredCount, recordsToShow);
+                renderPagination(currentFilteredAndSortedData.length, recordsToShow);
             }
 
             // --- Event Listeners ---
@@ -351,24 +359,7 @@
             });
 
             nextPageBtn.addEventListener('click', () => {
-                // We need to calculate total pages again here to check the boundary
-                const totalFilteredCount = allData.filter(row => {
-                     const channelValue = channelFilter.value;
-                     const searchTerm = searchInput.value.toLowerCase();
-                     let matches = true;
-                     if(channelValue) matches = matches && row.Channel === channelValue;
-                     if(searchTerm) {
-                        const seqValue = row.seq || '';
-                        let targetSeq = '';
-                        if (seqValue.includes('/')) {
-                            targetSeq = (seqValue.split('/')[1] || '').toLowerCase();
-                        }
-                        matches = matches && targetSeq.includes(searchTerm);
-                     }
-                     return matches;
-                }).length;
-
-                const totalPages = Math.ceil(totalFilteredCount / recordsToShow);
+                const totalPages = Math.ceil(currentFilteredAndSortedData.length / recordsToShow);
                 if (currentPage < totalPages) {
                     currentPage++;
                     filterAndSortData();
