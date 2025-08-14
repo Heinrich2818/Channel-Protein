@@ -51,6 +51,25 @@
             height: 500px;
             position: relative;
         }
+        /* Styles for sortable table headers */
+        .sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+        .sortable:hover {
+            background-color: #e2e8f0; /* slate-200 */
+        }
+        .sort-icon {
+            display: inline-block;
+            width: 1em;
+            height: 1em;
+            margin-left: 0.5rem;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        .sortable.sorted .sort-icon {
+            opacity: 1;
+        }
     </style>
 </head>
 <body class="antialiased text-slate-700">
@@ -68,8 +87,8 @@
                 <select id="channel-filter" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"></select>
             </div>
             <div>
-                <label for="search-input" class="block text-sm font-medium text-slate-600 mb-1">Search</label>
-                <input type="text" id="search-input" placeholder="Search all fields..." class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                <label for="search-input" class="block text-sm font-medium text-slate-600 mb-1">Search Sequence</label>
+                <input type="text" id="search-input" placeholder="Search target sequence..." class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
             </div>
              <div>
                 <label for="row-count" class="block text-sm font-medium text-slate-600 mb-1">Showing Results</label>
@@ -116,8 +135,6 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // --- File Path Configuration ---
-            // These paths are relative to the location of your index.html file.
-            // Using './' makes the relative path explicit.
             const PATH_TO_CSV = './Protein_data/csv/data.csv';
             const PATH_TO_PDB_FOLDER = './Protein_data/pdb/'; // MUST end with a slash!
 
@@ -134,9 +151,11 @@
             const pdbViewerContainer = document.getElementById('pdb-viewer');
             let pdbViewer = null;
 
-            // Data storage
+            // Data and state storage
             let allData = [];
             let headers = [];
+            let sortKey = 'design'; // Default sort column
+            let sortDirection = 'asc'; // Default sort direction
 
             async function loadData() {
                 try {
@@ -147,7 +166,7 @@
                     const csvText = await response.text();
                     parseCSV(csvText);
                     populateFilters();
-                    renderTable(allData);
+                    filterAndSortData(); // Initial render
                 } catch (error) {
                     console.error("Failed to load or parse CSV:", error);
                     tableBody.innerHTML = `<tr><td colspan="10" class="text-center p-8 text-red-500 font-semibold">${error.message}</td></tr>`;
@@ -157,17 +176,21 @@
             }
 
             function parseCSV(text) {
-                // Handle potential carriage return characters (\r) from different OS
                 const lines = text.trim().replace(/\r/g, '').split('\n');
                 headers = lines[0].split(',').map(h => h.trim());
-                headers.push('Actions'); // Add new column for buttons
+                headers.push('Actions');
                 
-                tableHeadRow.innerHTML = headers.map(header => `<th scope="col" class="px-6 py-3">${header}</th>`).join('');
+                tableHeadRow.innerHTML = headers.map(header => {
+                    if (header === 'Actions') {
+                        return `<th scope="col" class="px-6 py-3">${header}</th>`;
+                    }
+                    return `<th scope="col" class="px-6 py-3 sortable" data-key="${header}">${header}<span class="sort-icon"></span></th>`;
+                }).join('');
 
                 allData = lines.slice(1).map(line => {
                     const values = line.split(','); 
                     const rowObject = {};
-                    headers.slice(0,-1).forEach((header, index) => { // Exclude 'Actions' header
+                    headers.slice(0,-1).forEach((header, index) => {
                         rowObject[header] = values[index] ? values[index].trim() : '';
                     });
                     return rowObject;
@@ -186,6 +209,8 @@
             }
 
             function renderTable(data) {
+                updateHeaderIcons();
+
                 if (data.length === 0) {
                     tableBody.innerHTML = `<tr><td colspan="${headers.length}" class="text-center p-8">No matching results found.</td></tr>`;
                     rowCountDisplay.textContent = '0 results';
@@ -194,21 +219,16 @@
 
                 const rowsHtml = data.map(row => {
                     const cellsHtml = headers.slice(0, -1).map(header => {
-                        let content = row[header] || ''; // Default to empty string
-
-                        // Special handling for the 'seq' column
+                        let content = row[header] || '';
                         if (header.toLowerCase() === 'seq') {
                             if (content.includes('/')) {
-                                content = content.split('/')[1] || ''; // Get part after slash
+                                content = content.split('/')[1] || '';
                             }
                             return `<td class="px-6 py-4 seq-cell" title="${content}">${content}</td>`;
                         }
-
-                        // Handle numeric rounding for other columns
                         if (!isNaN(parseFloat(content)) && content.includes('.')) {
                             content = parseFloat(content).toFixed(4);
                         }
-                        
                         return `<td class="px-6 py-4">${content}</td>`;
                     }).join('');
 
@@ -228,21 +248,59 @@
                 rowCountDisplay.textContent = `${data.length} of ${allData.length} results`;
             }
 
-            function filterAndSearch() {
+            function updateHeaderIcons() {
+                document.querySelectorAll('th.sortable').forEach(th => {
+                    const icon = th.querySelector('.sort-icon');
+                    th.classList.remove('sorted');
+                    icon.innerHTML = '';
+                    if (th.dataset.key === sortKey) {
+                        th.classList.add('sorted');
+                        icon.innerHTML = sortDirection === 'asc' ? '&#9650;' : '&#9660;';
+                    }
+                });
+            }
+
+            function filterAndSortData() {
                 const channelValue = channelFilter.value;
                 const searchTerm = searchInput.value.toLowerCase();
-                let filteredData = allData;
+                let filteredData = [...allData];
 
                 if (channelValue) {
                     filteredData = filteredData.filter(row => row.Channel === channelValue);
                 }
+
+                // Apply search filter ONLY to the target part of the 'seq' column
                 if (searchTerm) {
-                    filteredData = filteredData.filter(row => 
-                        Object.values(row).some(value =>
-                            value.toString().toLowerCase().includes(searchTerm)
-                        )
-                    );
+                    filteredData = filteredData.filter(row => {
+                        const seqValue = row.seq || '';
+                        let targetSeq = '';
+                        // Check if the sequence has the separator
+                        if (seqValue.includes('/')) {
+                            // Get the part after the slash and convert to lower case
+                            targetSeq = (seqValue.split('/')[1] || '').toLowerCase();
+                        }
+                        // Only return true if the target sequence part includes the search term
+                        return targetSeq.includes(searchTerm);
+                    });
                 }
+
+                // Apply sorting
+                filteredData.sort((a, b) => {
+                    const valA = a[sortKey];
+                    const valB = b[sortKey];
+                    const numA = parseFloat(valA);
+                    const numB = parseFloat(valB);
+
+                    let comparison = 0;
+                    if (!isNaN(numA) && !isNaN(numB)) {
+                        comparison = numA - numB;
+                    } else {
+                        comparison = (valA || '').localeCompare(valB || '');
+                    }
+                    
+                    return sortDirection === 'asc' ? comparison : -comparison;
+                });
+
                 renderTable(filteredData);
             }
 
@@ -284,11 +342,25 @@
             }
 
             // --- Event Listeners ---
-            channelFilter.addEventListener('change', filterAndSearch);
-            searchInput.addEventListener('input', filterAndSearch);
+            channelFilter.addEventListener('change', filterAndSortData);
+            searchInput.addEventListener('input', filterAndSortData);
             closeModalBtn.addEventListener('click', hideModal);
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) hideModal();
+            });
+
+            tableHeadRow.addEventListener('click', (e) => {
+                const header = e.target.closest('th.sortable');
+                if (!header) return;
+
+                const newSortKey = header.dataset.key;
+                if (sortKey === newSortKey) {
+                    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortKey = newSortKey;
+                    sortDirection = 'asc';
+                }
+                filterAndSortData();
             });
 
             tableBody.addEventListener('click', (e) => {
