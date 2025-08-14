@@ -1,162 +1,305 @@
-<script>
-  const CSV_URL = `data.csv?v=${Date.now()}`; // cache-busting
-  const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-
-  // Map headers and coerce numerics
-  function normalizeRows(rows) {
-    const map = {
-      "channel":"Channel","design":"Design","n":"n",
-      "mpnn":"MPNN","plddt":"pLDDT","i_ptm":"iPTM","i_pae":"iPAE","rmsd":"RMSD","seq":"Sequence"
-    };
-    const rawHeaders = Object.keys(rows[0] || {});
-    const headers = rawHeaders.map(h => map[h.trim().toLowerCase()] || h.trim());
-
-    const data = rows.map(r => {
-      const obj = {};
-      rawHeaders.forEach((rh,i) => obj[headers[i]] = (r[rh] ?? "").toString().trim());
-      // numbers
-      ["MPNN","pLDDT","iPTM","iPAE","RMSD","n","Design"].forEach(k=>{
-        if (obj[k] !== "") obj[k] = Number(obj[k]);
-      });
-      const seq = (obj["Sequence"] || "").replace(/\s/g,"");
-      obj["SeqLen"] = seq.length;
-      return obj;
-    });
-    return data;
-  }
-
-  let table;
-
-  /* Robust numeric range filter — safe before table exists */
-  $.fn.dataTable.ext.search = $.fn.dataTable.ext.search || [];
-  $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
-    if (!settings.nTable || settings.nTable.id !== 'dataTable') return true;
-
-    // Safe access during early draws
-    const row = (settings.aoData && settings.aoData[dataIndex] && settings.aoData[dataIndex]._aData) || {};
-    const num = v => (v === "" || v == null ? NaN : Number(v));
-    const rmsd  = num(row.RMSD);
-    const iPAE  = num(row.iPAE);
-    const pLDDT = num(row.pLDDT);
-
-    const val = id => parseFloat(document.getElementById(id)?.value);
-    const inRange = (v, min, max) =>
-      (isNaN(min) || (isNaN(v) ? true : v >= min)) &&
-      (isNaN(max) || (isNaN(v) ? true : v <= max));
-
-    return inRange(rmsd,  val('rmsdMin'),  val('rmsdMax')) &&
-           inRange(iPAE,  val('paeMin'),   val('paeMax'))  &&
-           inRange(pLDDT, val('plddtMin'), val('plddtMax'));
-  });
-
-  function buildChannelFilter(rows) {
-    const select = document.getElementById('channelFilter');
-    const uniq = Array.from(new Set(rows.map(r => r["Channel"]).filter(Boolean))).sort();
-    uniq.forEach(ch => {
-      const opt = document.createElement('option');
-      opt.value = ch; opt.textContent = ch;
-      select.appendChild(opt);
-    });
-    select.addEventListener('change', () => {
-      if (!table) return;
-      table.column(0).search(select.value ? `^${select.value}$` : '', true, false).draw();
-    });
-  }
-
-  function initTable(rows) {
-    buildChannelFilter(rows);
-
-    table = $('#dataTable').DataTable({
-      data: rows,
-      responsive: true,
-      deferRender: true,
-      pageLength: 10,
-      lengthMenu: [10, 25, 50, 100],
-      dom: 'Bfrtip',
-      buttons: [{ extend: 'csvHtml5', text: 'Export filtered CSV', title: 'ion_channel_table' }],
-      columns: [
-        { title: 'Channel', data: 'Channel', className: 'all' },
-        { title: 'Design',  data: 'Design',  className: 'min-tablet' },
-        { title: 'n',       data: 'n',       className: 'min-tablet' },
-        { title: 'MPNN',    data: 'MPNN',    className: 'min-tablet',
-          render: (d,t)=>{ const v=Number(d); if(t==='sort'||t==='type') return isNaN(v)?-Infinity:v; return isNaN(v)?'':v.toFixed(6);} },
-        { title: 'pLDDT',   data: 'pLDDT',   className: 'all',
-          render: (d,t)=>{ const v=Number(d); if(t==='sort'||t==='type') return isNaN(v)?-Infinity:v; return isNaN(v)?'':v.toFixed(6);} },
-        { title: 'iPTM',    data: 'iPTM',    className: 'min-tablet',
-          render: (d,t)=>{ const v=Number(d); if(t==='sort'||t==='type') return isNaN(v)?-Infinity:v; return isNaN(v)?'':v.toFixed(6);} },
-        { title: 'iPAE',    data: 'iPAE',    className: 'min-tablet',
-          render: (d,t)=>{ const v=Number(d); if(t==='sort'||t==='type') return isNaN(v)?-Infinity:v; return isNaN(v)?'':v.toFixed(6);} },
-        { title: 'RMSD',    data: 'RMSD',    className: 'all',
-          render: (d,t)=>{ const v=Number(d); if(t==='sort'||t==='type') return isNaN(v)?-Infinity:v; return isNaN(v)?'':v.toFixed(6);} },
-        { title: 'SeqLen',  data: 'SeqLen',  className: 'min-tablet', searchable: false },
-        { title: 'Sequence', data: 'Sequence', className: 'none', orderable: false,
-          render: (data, type, row) => {
-            if (type !== 'display') return data;
-            const seq = data || '';
-            const len = row.SeqLen ?? (seq.replace(/\s/g,"").length);
-            const short = len > 30 ? `${seq.slice(0,12)}…${seq.slice(-12)}` : seq;
-            return `<details>
-                      <summary><code>${esc(short)}</code> <small>(len ${len})</small></summary>
-                      <div style="white-space:pre-wrap;word-break:break-all;">
-                        <code>${esc(seq)}</code>
-                        <button class="copy-btn" data-seq="${esc(seq)}">Copy sequence</button>
-                      </div>
-                    </details>`;
-          }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Datasheet Viewer with PDB Preview</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 3Dmol.js for PDB viewing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
+    <!-- Inter font for a clean look -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* gray-50 */
         }
-      ]
-    });
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9; /* slate-100 */
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #94a3b8; /* slate-400 */
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #64748b; /* slate-500 */
+        }
+        .seq-cell {
+            max-width: 250px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+        }
+        .seq-cell:hover {
+            white-space: normal;
+            overflow: visible;
+        }
+        /* Styles for the PDB viewer modal */
+        #pdb-modal {
+            transition: opacity 0.3s ease;
+        }
+        #pdb-viewer {
+            width: 100%;
+            height: 500px;
+            position: relative;
+        }
+    </style>
+</head>
+<body class="antialiased text-slate-700">
 
-    document.getElementById('globalSearch').addEventListener('input', e => {
-      table.search(e.target.value).draw();
-    });
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-slate-800">MPNN Results Datasheet</h1>
+            <p class="text-slate-500 mt-1">Browse, search, filter, and preview 3D structures from your dataset.</p>
+        </header>
 
-    // live range filters
-    ['rmsdMin','rmsdMax','paeMin','paeMax','plddtMin','plddtMax'].forEach(id => {
-      document.getElementById(id).addEventListener('input', () => {
-        table.draw();
-        const total = table.rows({ filter: 'applied' }).count();
-        document.getElementById('status').textContent =
-          `Loaded ${table.rows().count()} records • ${total} after filters`;
-      });
-    });
+        <!-- Controls for filtering and searching -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-white rounded-lg shadow-sm border border-slate-200">
+            <div>
+                <label for="channel-filter" class="block text-sm font-medium text-slate-600 mb-1">Filter by Channel</label>
+                <select id="channel-filter" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"></select>
+            </div>
+            <div>
+                <label for="search-input" class="block text-sm font-medium text-slate-600 mb-1">Search</label>
+                <input type="text" id="search-input" placeholder="Search all fields..." class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+             <div>
+                <label for="row-count" class="block text-sm font-medium text-slate-600 mb-1">Showing Results</label>
+                <p id="row-count" class="w-full p-2 text-slate-800 font-medium">Loading...</p>
+            </div>
+        </div>
 
-    // copy sequence
-    document.addEventListener('click', async (e) => {
-      const btn = e.target.closest('.copy-btn');
-      if (!btn) return;
-      const seq = btn.getAttribute('data-seq')?.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&') || '';
-      try {
-        await navigator.clipboard.writeText(seq);
-        btn.textContent = 'Copied';
-        setTimeout(() => btn.textContent = 'Copy sequence', 1000);
-      } catch {
-        btn.textContent = 'Copy failed';
-        setTimeout(() => btn.textContent = 'Copy sequence', 1000);
-      }
-    });
+        <!-- Table container -->
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-x-auto custom-scrollbar">
+            <table class="w-full text-sm text-left text-slate-500">
+                <thead class="text-xs text-slate-700 uppercase bg-slate-100 sticky top-0">
+                    <tr></tr>
+                </thead>
+                <tbody id="data-table-body">
+                    <tr>
+                        <td colspan="10" class="text-center p-8">
+                            <div id="loader" class="flex items-center justify-center space-x-2">
+                                <div class="w-4 h-4 rounded-full animate-pulse bg-indigo-500"></div>
+                                <div class="w-4 h-4 rounded-full animate-pulse bg-indigo-500" style="animation-delay: 0.2s;"></div>
+                                <div class="w-4 h-4 rounded-full animate-pulse bg-indigo-500" style="animation-delay: 0.4s;"></div>
+                                <span class="ml-2">Loading data...</span>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 
-    document.getElementById('status').textContent = `Loaded ${rows.length} records`;
-  }
+    <!-- PDB Viewer Modal -->
+    <div id="pdb-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50 pointer-events-none opacity-0">
+        <div class="bg-white rounded-lg shadow-2xl w-full max-w-3xl transform transition-all scale-95">
+            <div class="flex justify-between items-center p-4 border-b border-slate-200">
+                <h3 class="text-lg font-semibold text-slate-800" id="modal-title">PDB Structure Preview</h3>
+                <button id="close-modal-btn" class="text-slate-500 hover:text-slate-800 text-3xl leading-none">&times;</button>
+            </div>
+            <div class="p-4">
+                <div id="pdb-viewer" class="bg-gray-100 rounded-md"></div>
+            </div>
+        </div>
+    </div>
 
-  // Load CSV
-  Papa.parse(CSV_URL, {
-    download: true,
-    header: true,
-    skipEmptyLines: true,
-    complete: (res) => {
-      try {
-        const rows = (res.data || []).filter(r => r && Object.values(r).some(v => String(v ?? "").trim() !== ""));
-        if (!rows.length) throw new Error("CSV is empty or header row is missing.");
-        initTable(normalizeRows(rows));
-      } catch (e) {
-        document.getElementById('status').textContent = "Parse failed: " + e.message;
-        console.error(e);
-      }
-    },
-    error: (err) => {
-      document.getElementById('status').textContent = "Failed to load data.csv (is GitHub Pages deployed?)";
-      console.error(err);
-    }
-  });
-</script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- GitHub Configuration ---
+            // IMPORTANT: Replace these with your own GitHub details to deploy.
+            const GITHUB_USERNAME = 'Heinrich2818';
+            const GITHUB_REPO = 'Channel-Protein';
+            const GITHUB_BRANCH = 'main'; // Or your default branch name
+            const PATH_TO_CSV = 'Protein_data/csv/mpnn_results.csv'; // e.g., 'data/mpnn_results.csv' or just 'mpnn_results.csv'
+            const PATH_TO_PDB_FOLDER = 'Protein_data/pdb/'; // e.g., 'data/pdbs/' - MUST end with a slash!
+
+            // Base URL for fetching raw files from GitHub
+            const GITHUB_BASE_URL = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH}/`;
+
+            // DOM element references
+            const tableBody = document.getElementById('data-table-body');
+            const tableHeadRow = document.querySelector('thead tr');
+            const channelFilter = document.getElementById('channel-filter');
+            const searchInput = document.getElementById('search-input');
+            const loader = document.getElementById('loader');
+            const rowCountDisplay = document.getElementById('row-count');
+            const modal = document.getElementById('pdb-modal');
+            const modalTitle = document.getElementById('modal-title');
+            const closeModalBtn = document.getElementById('close-modal-btn');
+            const pdbViewerContainer = document.getElementById('pdb-viewer');
+            let pdbViewer = null;
+
+            // Data storage
+            let allData = [];
+            let headers = [];
+
+            async function loadRemoteData() {
+                const csvUrl = GITHUB_BASE_URL + PATH_TO_CSV;
+                try {
+                    const response = await fetch(csvUrl);
+                    if (!response.ok) {
+                        throw new Error(`Network response was not ok: ${response.statusText}. Check your GitHub configuration and file paths.`);
+                    }
+                    const csvText = await response.text();
+                    parseCSV(csvText);
+                    populateFilters();
+                    renderTable(allData);
+                } catch (error) {
+                    console.error("Failed to load or parse CSV from GitHub:", error);
+                    tableBody.innerHTML = `<tr><td colspan="10" class="text-center p-8 text-red-500 font-semibold">${error.message}</td></tr>`;
+                } finally {
+                    loader.style.display = 'none';
+                }
+            }
+
+            function parseCSV(text) {
+                const lines = text.trim().split('\n');
+                headers = lines[0].split(',').map(h => h.trim());
+                headers.push('Actions'); // Add new column for buttons
+                
+                tableHeadRow.innerHTML = headers.map(header => `<th scope="col" class="px-6 py-3">${header}</th>`).join('');
+
+                allData = lines.slice(1).map(line => {
+                    const values = line.split(','); 
+                    const rowObject = {};
+                    headers.slice(0,-1).forEach((header, index) => { // Exclude 'Actions' header
+                        rowObject[header] = values[index] ? values[index].trim() : '';
+                    });
+                    return rowObject;
+                });
+            }
+
+            function populateFilters() {
+                const channels = [...new Set(allData.map(item => item.Channel))];
+                channelFilter.innerHTML = '<option value="">All Channels</option>';
+                channels.sort().forEach(channel => {
+                    const option = document.createElement('option');
+                    option.value = channel;
+                    option.textContent = channel;
+                    channelFilter.appendChild(option);
+                });
+            }
+
+            function renderTable(data) {
+                if (data.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="${headers.length}" class="text-center p-8">No matching results found.</td></tr>`;
+                    rowCountDisplay.textContent = '0 results';
+                    return;
+                }
+
+                const rowsHtml = data.map(row => {
+                    const cellsHtml = headers.slice(0, -1).map(header => {
+                        let content = row[header];
+                        if (!isNaN(parseFloat(content)) && content.includes('.')) {
+                            content = parseFloat(content).toFixed(4);
+                        }
+                        if (header.toLowerCase() === 'seq') {
+                            return `<td class="px-6 py-4 seq-cell" title="Click to expand">${content}</td>`;
+                        }
+                        return `<td class="px-6 py-4">${content}</td>`;
+                    }).join('');
+
+                    const pdbFileName = `design_${row.design}_${row.n}.pdb`;
+                    const pdbFileUrl = GITHUB_BASE_URL + PATH_TO_PDB_FOLDER + pdbFileName;
+
+                    const actionsCell = `
+                        <td class="px-6 py-4 flex items-center space-x-2">
+                            <button class="preview-btn text-indigo-600 hover:text-indigo-900 font-medium text-sm" data-pdb-url="${pdbFileUrl}" data-pdb-name="${pdbFileName}">Preview</button>
+                            <a href="${pdbFileUrl}" download="${pdbFileName}" class="text-green-600 hover:text-green-900 font-medium text-sm">Download</a>
+                        </td>`;
+
+                    return `<tr class="bg-white border-b hover:bg-slate-50">${cellsHtml}${actionsCell}</tr>`;
+                }).join('');
+
+                tableBody.innerHTML = rowsHtml;
+                rowCountDisplay.textContent = `${data.length} of ${allData.length} results`;
+            }
+
+            function filterAndSearch() {
+                const channelValue = channelFilter.value;
+                const searchTerm = searchInput.value.toLowerCase();
+                let filteredData = allData;
+
+                if (channelValue) {
+                    filteredData = filteredData.filter(row => row.Channel === channelValue);
+                }
+                if (searchTerm) {
+                    filteredData = filteredData.filter(row => 
+                        Object.values(row).some(value =>
+                            value.toString().toLowerCase().includes(searchTerm)
+                        )
+                    );
+                }
+                renderTable(filteredData);
+            }
+
+            function showModal(pdbUrl, pdbName) {
+                modalTitle.textContent = `Preview: ${pdbName}`;
+                modal.classList.remove('opacity-0', 'pointer-events-none');
+                modal.querySelector('div > div').classList.remove('scale-95');
+                
+                pdbViewerContainer.innerHTML = '<p class="text-center p-4">Loading 3D model...</p>';
+
+                if (pdbViewer) {
+                    pdbViewer.clear();
+                } else {
+                    pdbViewer = $3Dmol.createViewer(pdbViewerContainer, {
+                        defaultcolors: $3Dmol.rasmolElementColors
+                    });
+                }
+                
+                fetch(pdbUrl)
+                    .then(res => {
+                        if (!res.ok) throw new Error(`Could not fetch PDB file: ${res.statusText}`);
+                        return res.text();
+                    })
+                    .then(data => {
+                        pdbViewer.addModel(data, 'pdb');
+                        pdbViewer.setStyle({}, { cartoon: { color: 'spectrum' } });
+                        pdbViewer.zoomTo();
+                        pdbViewer.render();
+                    })
+                    .catch(err => {
+                        console.error("Failed to load PDB file:", err);
+                        pdbViewerContainer.innerHTML = `<p class="text-center p-4 text-red-500">${err.message}</p>`;
+                    });
+            }
+
+            function hideModal() {
+                modal.classList.add('opacity-0', 'pointer-events-none');
+                modal.querySelector('div > div').classList.add('scale-95');
+            }
+
+            // --- Event Listeners ---
+            channelFilter.addEventListener('change', filterAndSearch);
+            searchInput.addEventListener('input', filterAndSearch);
+            closeModalBtn.addEventListener('click', hideModal);
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) hideModal();
+            });
+
+            tableBody.addEventListener('click', (e) => {
+                if (e.target.classList.contains('preview-btn')) {
+                    const pdbUrl = e.target.getAttribute('data-pdb-url');
+                    const pdbName = e.target.getAttribute('data-pdb-name');
+                    showModal(pdbUrl, pdbName);
+                }
+            });
+
+            // --- Initial Load ---
+            loadRemoteData();
+        });
+    </script>
+
+</body>
+</html>
