@@ -194,13 +194,21 @@
 
                 const rowsHtml = data.map(row => {
                     const cellsHtml = headers.slice(0, -1).map(header => {
-                        let content = row[header];
+                        let content = row[header] || ''; // Default to empty string
+
+                        // Special handling for the 'seq' column
+                        if (header.toLowerCase() === 'seq') {
+                            if (content.includes('/')) {
+                                content = content.split('/')[1] || ''; // Get part after slash
+                            }
+                            return `<td class="px-6 py-4 seq-cell" title="${content}">${content}</td>`;
+                        }
+
+                        // Handle numeric rounding for other columns
                         if (!isNaN(parseFloat(content)) && content.includes('.')) {
                             content = parseFloat(content).toFixed(4);
                         }
-                        if (header.toLowerCase() === 'seq') {
-                            return `<td class="px-6 py-4 seq-cell" title="Click to expand">${content}</td>`;
-                        }
+                        
                         return `<td class="px-6 py-4">${content}</td>`;
                     }).join('');
 
@@ -298,4 +306,3 @@
 
 </body>
 </html>
-
