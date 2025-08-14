@@ -3,11 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Datasheet Viewer with PDB Preview</title>
+    <title>Proteins For Channels</title>
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 3Dmol.js for PDB viewing -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
     <!-- Inter font for a clean look -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -41,15 +39,6 @@
         .seq-cell:hover {
             white-space: normal;
             overflow: visible;
-        }
-        /* Styles for the PDB viewer modal */
-        #pdb-modal {
-            transition: opacity 0.3s ease;
-        }
-        #pdb-viewer {
-            width: 100%;
-            height: 500px;
-            position: relative;
         }
         /* Styles for sortable table headers */
         .sortable {
@@ -118,20 +107,6 @@
         </div>
     </div>
 
-    <!-- PDB Viewer Modal -->
-    <div id="pdb-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50 pointer-events-none opacity-0">
-        <div class="bg-white rounded-lg shadow-2xl w-full max-w-3xl transform transition-all scale-95">
-            <div class="flex justify-between items-center p-4 border-b border-slate-200">
-                <h3 class="text-lg font-semibold text-slate-800" id="modal-title">PDB Structure Preview</h3>
-                <button id="close-modal-btn" class="text-slate-500 hover:text-slate-800 text-3xl leading-none">&times;</button>
-            </div>
-            <div class="p-4">
-                <div id="pdb-viewer" class="bg-gray-100 rounded-md"></div>
-            </div>
-        </div>
-    </div>
-
-
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // --- File Path Configuration ---
@@ -145,11 +120,6 @@
             const searchInput = document.getElementById('search-input');
             const loader = document.getElementById('loader');
             const rowCountDisplay = document.getElementById('row-count');
-            const modal = document.getElementById('pdb-modal');
-            const modalTitle = document.getElementById('modal-title');
-            const closeModalBtn = document.getElementById('close-modal-btn');
-            const pdbViewerContainer = document.getElementById('pdb-viewer');
-            let pdbViewer = null;
 
             // Data and state storage
             let allData = [];
@@ -237,7 +207,6 @@
 
                     const actionsCell = `
                         <td class="px-6 py-4 flex items-center space-x-2">
-                            <button class="preview-btn text-indigo-600 hover:text-indigo-900 font-medium text-sm" data-pdb-url="${pdbFileUrl}" data-pdb-name="${pdbFileName}">Preview</button>
                             <a href="${pdbFileUrl}" download="${pdbFileName}" class="text-green-600 hover:text-green-900 font-medium text-sm">Download</a>
                         </td>`;
 
@@ -304,50 +273,9 @@
                 renderTable(filteredData);
             }
 
-            function showModal(pdbUrl, pdbName) {
-                modalTitle.textContent = `Preview: ${pdbName}`;
-                modal.classList.remove('opacity-0', 'pointer-events-none');
-                modal.querySelector('div > div').classList.remove('scale-95');
-                
-                pdbViewerContainer.innerHTML = '<p class="text-center p-4">Loading 3D model...</p>';
-
-                if (pdbViewer) {
-                    pdbViewer.clear();
-                } else {
-                    pdbViewer = $3Dmol.createViewer(pdbViewerContainer, {
-                        defaultcolors: $3Dmol.rasmolElementColors
-                    });
-                }
-                
-                fetch(pdbUrl)
-                    .then(res => {
-                        if (!res.ok) throw new Error(`Could not fetch PDB file: ${res.statusText}`);
-                        return res.text();
-                    })
-                    .then(data => {
-                        pdbViewer.addModel(data, 'pdb');
-                        pdbViewer.setStyle({}, { cartoon: { color: 'spectrum' } });
-                        pdbViewer.zoomTo();
-                        pdbViewer.render();
-                    })
-                    .catch(err => {
-                        console.error("Failed to load PDB file:", err);
-                        pdbViewerContainer.innerHTML = `<p class="text-center p-4 text-red-500">${err.message}</p>`;
-                    });
-            }
-
-            function hideModal() {
-                modal.classList.add('opacity-0', 'pointer-events-none');
-                modal.querySelector('div > div').classList.add('scale-95');
-            }
-
             // --- Event Listeners ---
             channelFilter.addEventListener('change', filterAndSortData);
             searchInput.addEventListener('input', filterAndSortData);
-            closeModalBtn.addEventListener('click', hideModal);
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) hideModal();
-            });
 
             tableHeadRow.addEventListener('click', (e) => {
                 const header = e.target.closest('th.sortable');
@@ -363,14 +291,6 @@
                 filterAndSortData();
             });
 
-            tableBody.addEventListener('click', (e) => {
-                if (e.target.classList.contains('preview-btn')) {
-                    const pdbUrl = e.target.getAttribute('data-pdb-url');
-                    const pdbName = e.target.getAttribute('data-pdb-name');
-                    showModal(pdbUrl, pdbName);
-                }
-            });
-
             // --- Initial Load ---
             loadData();
         });
@@ -378,4 +298,3 @@
 
 </body>
 </html>
-
