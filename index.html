@@ -59,6 +59,11 @@
         .sortable.sorted .sort-icon {
             opacity: 1;
         }
+        /* Pagination button styling */
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body class="antialiased text-slate-700">
@@ -114,6 +119,13 @@
                 </tbody>
             </table>
         </div>
+        
+        <!-- Pagination Controls -->
+        <div id="pagination-controls" class="flex items-center justify-between mt-4">
+            <button id="prev-page-btn" class="pagination-btn px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:bg-indigo-300">Previous</button>
+            <span id="page-indicator" class="text-sm text-slate-600"></span>
+            <button id="next-page-btn" class="pagination-btn px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:bg-indigo-300">Next</button>
+        </div>
     </div>
 
     <script>
@@ -130,13 +142,18 @@
             const recordsSelect = document.getElementById('records-select');
             const loader = document.getElementById('loader');
             const rowCountDisplay = document.getElementById('row-count');
+            const paginationControls = document.getElementById('pagination-controls');
+            const prevPageBtn = document.getElementById('prev-page-btn');
+            const nextPageBtn = document.getElementById('next-page-btn');
+            const pageIndicator = document.getElementById('page-indicator');
 
             // Data and state storage
             let allData = [];
             let headers = [];
-            let sortKey = 'design'; // Default sort column
-            let sortDirection = 'asc'; // Default sort direction
-            let recordsToShow = Infinity; // Default to show all
+            let sortKey = 'design';
+            let sortDirection = 'asc';
+            let recordsToShow = Infinity;
+            let currentPage = 1;
 
             async function loadData() {
                 try {
@@ -147,7 +164,7 @@
                     const csvText = await response.text();
                     parseCSV(csvText);
                     populateFilters();
-                    filterAndSortData(); // Initial render
+                    filterAndSortData();
                 } catch (error) {
                     console.error("Failed to load or parse CSV:", error);
                     tableBody.innerHTML = `<tr><td colspan="10" class="text-center p-8 text-red-500 font-semibold">${error.message}</td></tr>`;
@@ -217,7 +234,7 @@
 
                     const actionsCell = `
                         <td class="px-6 py-4 flex items-center space-x-2">
-                            <a href="${pdbFileUrl}" download="${pdbFileName}" class="text-green-600 hover:text-green-900 font-medium text-sm">.pdb Download</a>
+                            <a href="${pdbFileUrl}" download="${pdbFileName}" class="text-green-600 hover:text-green-900 font-medium text-sm">Download</a>
                         </td>`;
 
                     return `<tr class="bg-white border-b hover:bg-slate-50">${cellsHtml}${actionsCell}</tr>`;
@@ -238,7 +255,25 @@
                 });
             }
 
-            function filterAndSortData() {
+            function renderPagination(totalItems, itemsPerPage) {
+                if (itemsPerPage === Infinity) {
+                    paginationControls.style.display = 'none';
+                    return;
+                }
+                
+                paginationControls.style.display = 'flex';
+                const totalPages = Math.ceil(totalItems / itemsPerPage);
+
+                pageIndicator.textContent = `Page ${currentPage} of ${totalPages}`;
+                prevPageBtn.disabled = currentPage === 1;
+                nextPageBtn.disabled = currentPage === totalPages;
+            }
+
+            function filterAndSortData(resetPage = false) {
+                if(resetPage) {
+                    currentPage = 1;
+                }
+
                 const channelValue = channelFilter.value;
                 const searchTerm = searchInput.value.toLowerCase();
                 let filteredData = [...allData];
@@ -276,21 +311,22 @@
                     return sortDirection === 'asc' ? comparison : -comparison;
                 });
                 
-                // Slice the data for pagination
-                const paginatedData = filteredData.slice(0, recordsToShow);
+                const startIndex = (currentPage - 1) * recordsToShow;
+                const endIndex = startIndex + recordsToShow;
+                const paginatedData = filteredData.slice(startIndex, endIndex);
                 
-                // Update the row count display
                 rowCountDisplay.textContent = `Showing ${paginatedData.length} of ${totalFilteredCount} results`;
 
                 renderTable(paginatedData);
+                renderPagination(totalFilteredCount, recordsToShow);
             }
 
             // --- Event Listeners ---
-            channelFilter.addEventListener('change', filterAndSortData);
-            searchInput.addEventListener('input', filterAndSortData);
+            channelFilter.addEventListener('change', () => filterAndSortData(true));
+            searchInput.addEventListener('input', () => filterAndSortData(true));
             recordsSelect.addEventListener('change', (e) => {
                 recordsToShow = e.target.value === 'Infinity' ? Infinity : parseInt(e.target.value, 10);
-                filterAndSortData();
+                filterAndSortData(true);
             });
 
             tableHeadRow.addEventListener('click', (e) => {
@@ -304,7 +340,39 @@
                     sortKey = newSortKey;
                     sortDirection = 'asc';
                 }
-                filterAndSortData();
+                filterAndSortData(true);
+            });
+
+            prevPageBtn.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    filterAndSortData();
+                }
+            });
+
+            nextPageBtn.addEventListener('click', () => {
+                // We need to calculate total pages again here to check the boundary
+                const totalFilteredCount = allData.filter(row => {
+                     const channelValue = channelFilter.value;
+                     const searchTerm = searchInput.value.toLowerCase();
+                     let matches = true;
+                     if(channelValue) matches = matches && row.Channel === channelValue;
+                     if(searchTerm) {
+                        const seqValue = row.seq || '';
+                        let targetSeq = '';
+                        if (seqValue.includes('/')) {
+                            targetSeq = (seqValue.split('/')[1] || '').toLowerCase();
+                        }
+                        matches = matches && targetSeq.includes(searchTerm);
+                     }
+                     return matches;
+                }).length;
+
+                const totalPages = Math.ceil(totalFilteredCount / recordsToShow);
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    filterAndSortData();
+                }
             });
 
             // --- Initial Load ---
