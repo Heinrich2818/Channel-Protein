@@ -70,7 +70,7 @@
         </header>
 
         <!-- Controls for filtering and searching -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-white rounded-lg shadow-sm border border-slate-200">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-white rounded-lg shadow-sm border border-slate-200">
             <div>
                 <label for="channel-filter" class="block text-sm font-medium text-slate-600 mb-1">Filter by Channel</label>
                 <select id="channel-filter" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"></select>
@@ -78,6 +78,15 @@
             <div>
                 <label for="search-input" class="block text-sm font-medium text-slate-600 mb-1">Search Sequence</label>
                 <input type="text" id="search-input" placeholder="Search target sequence..." class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div>
+                <label for="records-select" class="block text-sm font-medium text-slate-600 mb-1">Show Records</label>
+                <select id="records-select" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <option value="10">10</option>
+                    <option value="100">100</option>
+                    <option value="1000">1000</option>
+                    <option value="Infinity" selected>All</option>
+                </select>
             </div>
              <div>
                 <label for="row-count" class="block text-sm font-medium text-slate-600 mb-1">Showing Results</label>
@@ -118,6 +127,7 @@
             const tableHeadRow = document.querySelector('thead tr');
             const channelFilter = document.getElementById('channel-filter');
             const searchInput = document.getElementById('search-input');
+            const recordsSelect = document.getElementById('records-select');
             const loader = document.getElementById('loader');
             const rowCountDisplay = document.getElementById('row-count');
 
@@ -126,6 +136,7 @@
             let headers = [];
             let sortKey = 'design'; // Default sort column
             let sortDirection = 'asc'; // Default sort direction
+            let recordsToShow = Infinity; // Default to show all
 
             async function loadData() {
                 try {
@@ -183,7 +194,6 @@
 
                 if (data.length === 0) {
                     tableBody.innerHTML = `<tr><td colspan="${headers.length}" class="text-center p-8">No matching results found.</td></tr>`;
-                    rowCountDisplay.textContent = '0 results';
                     return;
                 }
 
@@ -207,14 +217,13 @@
 
                     const actionsCell = `
                         <td class="px-6 py-4 flex items-center space-x-2">
-                            <a href="${pdbFileUrl}" download="${pdbFileName}" class="text-green-600 hover:text-green-900 font-medium text-sm">Download</a>
+                            <a href="${pdbFileUrl}" download="${pdbFileName}" class="text-green-600 hover:text-green-900 font-medium text-sm">.pdb Download</a>
                         </td>`;
 
                     return `<tr class="bg-white border-b hover:bg-slate-50">${cellsHtml}${actionsCell}</tr>`;
                 }).join('');
 
                 tableBody.innerHTML = rowsHtml;
-                rowCountDisplay.textContent = `${data.length} of ${allData.length} results`;
             }
 
             function updateHeaderIcons() {
@@ -238,22 +247,19 @@
                     filteredData = filteredData.filter(row => row.Channel === channelValue);
                 }
 
-                // Apply search filter ONLY to the target part of the 'seq' column
                 if (searchTerm) {
                     filteredData = filteredData.filter(row => {
                         const seqValue = row.seq || '';
                         let targetSeq = '';
-                        // Check if the sequence has the separator
                         if (seqValue.includes('/')) {
-                            // Get the part after the slash and convert to lower case
                             targetSeq = (seqValue.split('/')[1] || '').toLowerCase();
                         }
-                        // Only return true if the target sequence part includes the search term
                         return targetSeq.includes(searchTerm);
                     });
                 }
 
-                // Apply sorting
+                const totalFilteredCount = filteredData.length;
+
                 filteredData.sort((a, b) => {
                     const valA = a[sortKey];
                     const valB = b[sortKey];
@@ -269,13 +275,23 @@
                     
                     return sortDirection === 'asc' ? comparison : -comparison;
                 });
+                
+                // Slice the data for pagination
+                const paginatedData = filteredData.slice(0, recordsToShow);
+                
+                // Update the row count display
+                rowCountDisplay.textContent = `Showing ${paginatedData.length} of ${totalFilteredCount} results`;
 
-                renderTable(filteredData);
+                renderTable(paginatedData);
             }
 
             // --- Event Listeners ---
             channelFilter.addEventListener('change', filterAndSortData);
             searchInput.addEventListener('input', filterAndSortData);
+            recordsSelect.addEventListener('change', (e) => {
+                recordsToShow = e.target.value === 'Infinity' ? Infinity : parseInt(e.target.value, 10);
+                filterAndSortData();
+            });
 
             tableHeadRow.addEventListener('click', (e) => {
                 const header = e.target.closest('th.sortable');
