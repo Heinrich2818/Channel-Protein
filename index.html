@@ -91,7 +91,8 @@
 
             const CSV_FOLDER_PATH = 'Protein_data/csv';
 
-            const API_URL = `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH ? 'contents/' + CSV_FOLDER_PATH + '?ref=' + GITHUB_BRANCH : 'contents/' + CSV_FOLDER_PATH}`;
+            // const API_URL = `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH ? 'contents/' + CSV_FOLDER_PATH + '?ref=' + GITHUB_BRANCH : 'contents/' + CSV_FOLDER_PATH}`;
+            const MANIFEST_URL = `${BASE_RAW_URL}Protein_data/csv/file_manifest.json`;
 
             const BASE_RAW_URL = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH}/`;
             const PATH_TO_PDB_FOLDER = `${BASE_RAW_URL}Protein_data/pdb/`;
@@ -128,32 +129,40 @@
 
             async function loadData() {
                 try {
-                    loaderText.textContent = "Scanning for CSV files...";
-
-                    const apiResponse = await fetch(API_URL);
-                    if (!apiResponse.ok) {
-                        if (apiResponse.status === 403) throw new Error("GitHub API rate limit exceeded. Please try again later.");
-                        if (apiResponse.status === 404) throw new Error("Folder not found. Check CSV_FOLDER_PATH.");
-                        throw new Error(`GitHub API Error: ${apiResponse.statusText}`);
+                    loaderText.textContent = "Loading file list...";
+                    const response = await fetch(MANIFEST_URL);
+                    if (!response.ok) {
+                        throw new Error(`Failed to load file list (Manifest). Status: ${response.status}`);
                     }
-                    const files = await apiResponse.json();
+                    const fileNames = await response.json();
+                    
+                    if (!Array.isArray(fileNames) || fileNames.length === 0) {
+                        throw new Error("File list is empty or invalid.");
+                    }
 
-                    const csvFiles = files.filter(file => file.name.endsWith('.csv'));
-                    if (csvFiles.length === 0) throw new Error("No CSV files found in the folder.");
+                    loaderText.textContent = `Found ${fileNames.length} files. Downloading...`;
+                    const csvFolderUrl = `${BASE_RAW_URL}Protein_data/csv/`;
+                    
+                    const fetchPromises = fileNames.map(fileName => {
+                        return fetch(csvFolderUrl + fileName).then(res => {
+                            if (!res.ok) throw new Error(`Failed to load ${fileName}`);
+                            return res.text();
+                        });
+                    });
 
-                    loaderText.textContent = `Found ${csvFiles.length} files. Downloading...`;
-
-                    const fetchPromises = csvFiles.map(file => fetch(file.download_url).then(res => res.text()));
                     const csvContents = await Promise.all(fetchPromises);
-
                     processAllCSVs(csvContents);
-
+                    
                     populateFilters();
                     filterAndSortData();
 
                 } catch (error) {
                     console.error("Error:", error);
-                    tableBody.innerHTML = `<tr><td colspan="100" class="text-center p-8 text-red-500 font-semibold">${error.message}</td></tr>`;
+                    let msg = error.message;
+                    if(msg.includes('Unexpected token')) {
+                        msg = "Failed to parse file_manifest.json. Make sure it is valid JSON.";
+                    }
+                    tableBody.innerHTML = `<tr><td colspan="100" class="text-center p-8 text-red-500 font-semibold">${msg}</td></tr>`;
                 } finally {
                     loader.style.display = 'none';
                 }
@@ -406,4 +415,5 @@
         });
     </script>
 </body>
+
 </html>
