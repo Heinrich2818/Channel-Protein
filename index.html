@@ -92,9 +92,8 @@
             const CSV_FOLDER_PATH = 'Protein_data/csv';
 
             // const API_URL = `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH ? 'contents/' + CSV_FOLDER_PATH + '?ref=' + GITHUB_BRANCH : 'contents/' + CSV_FOLDER_PATH}`;
-            const MANIFEST_URL = `${BASE_RAW_URL}Protein_data/csv/file_manifest.json`;
-
             const BASE_RAW_URL = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH}/`;
+            const MANIFEST_URL = `${BASE_RAW_URL}Protein_data/csv/file_manifest.json`;
             const PATH_TO_PDB_FOLDER = `${BASE_RAW_URL}Protein_data/pdb/`;
 
             const HIDDEN_COLUMNS = ['id', 'fingerprint'];
@@ -417,3 +416,4 @@
 </body>
 
 </html>
+
