@@ -89,19 +89,15 @@
             const GITHUB_REPO = 'Channel-Protein';
             const GITHUB_BRANCH = 'main';
 
-            // 目标文件夹路径 (相对于仓库根目录)
             const CSV_FOLDER_PATH = 'Protein_data/csv';
 
-            // GitHub API 用于读取文件夹内容
             const API_URL = `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH ? 'contents/' + CSV_FOLDER_PATH + '?ref=' + GITHUB_BRANCH : 'contents/' + CSV_FOLDER_PATH}`;
 
             const BASE_RAW_URL = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH}/`;
             const PATH_TO_PDB_FOLDER = `${BASE_RAW_URL}Protein_data/pdb/`;
 
-            // 定义隐形列 (全小写)
             const HIDDEN_COLUMNS = ['id', 'fingerprint'];
 
-            // DOM Elements
             const tableBody = document.getElementById('data-table-body');
             const tableHeadRow = document.querySelector('thead tr');
             const channelFilter = document.getElementById('channel-filter');
@@ -115,7 +111,6 @@
             const nextPageBtn = document.getElementById('next-page-btn');
             const pageIndicator = document.getElementById('page-indicator');
 
-            // State
             let allData = [];
             let currentFilteredAndSortedData = [];
             let headers = [];
@@ -124,7 +119,6 @@
             let recordsToShow = Infinity;
             let currentPage = 1;
 
-            // 自动检测到的关键列名 (解决大小写问题)
             let detectedKeys = {
                 channel: 'Channel', // 默认值
                 round: 'round',
@@ -136,7 +130,6 @@
                 try {
                     loaderText.textContent = "Scanning for CSV files...";
 
-                    // 1. 请求 GitHub API 获取文件列表
                     const apiResponse = await fetch(API_URL);
                     if (!apiResponse.ok) {
                         if (apiResponse.status === 403) throw new Error("GitHub API rate limit exceeded. Please try again later.");
@@ -145,17 +138,14 @@
                     }
                     const files = await apiResponse.json();
 
-                    // 2. 筛选出 .csv 文件
                     const csvFiles = files.filter(file => file.name.endsWith('.csv'));
                     if (csvFiles.length === 0) throw new Error("No CSV files found in the folder.");
 
                     loaderText.textContent = `Found ${csvFiles.length} files. Downloading...`;
 
-                    // 3. 并行下载所有 CSV
                     const fetchPromises = csvFiles.map(file => fetch(file.download_url).then(res => res.text()));
                     const csvContents = await Promise.all(fetchPromises);
 
-                    // 4. 解析并合并数据
                     processAllCSVs(csvContents);
 
                     populateFilters();
@@ -172,12 +162,9 @@
             function processAllCSVs(csvContents) {
                 if (csvContents.length === 0) return;
 
-                // 使用第一个文件来确定表头和关键列名
                 const firstFileLines = csvContents[0].trim().replace(/\r/g, '').split('\n');
                 const allHeaders = firstFileLines[0].split(',').map(h => h.trim());
 
-                // --- 智能列名检测 (Smart Key Detection) ---
-                // 遍历表头，找到实际使用的列名 (忽略大小写)
                 allHeaders.forEach(h => {
                     const lowerH = h.toLowerCase();
                     if (lowerH === 'channel') detectedKeys.channel = h;
@@ -187,26 +174,21 @@
                 });
                 console.log("Detected Keys:", detectedKeys);
 
-                // 过滤显示表头
                 headers = allHeaders.filter(h => !HIDDEN_COLUMNS.includes(h.toLowerCase()));
 
-                // 渲染表头
                 const displayHeaders = [...headers, 'Actions'];
                 tableHeadRow.innerHTML = displayHeaders.map(header => {
                     if (header === 'Actions') return `<th scope="col" class="px-6 py-3">${header}</th>`;
                     return `<th scope="col" class="px-6 py-3 sortable" data-key="${header}">${header}<span class="sort-icon"></span></th>`;
                 }).join('');
 
-                // 解析所有文件的内容
                 allData = [];
                 csvContents.forEach(content => {
                     const lines = content.trim().replace(/\r/g, '').split('\n');
-                    // 跳过每个文件的第一行 (表头)
                     const dataLines = lines.slice(1);
 
                     const fileData = dataLines.map(line => {
                         const values = line.split(',');
-                        // 如果这一行是空的，跳过
                         if (values.length < headers.length) return null;
 
                         const rowObject = {};
@@ -221,7 +203,6 @@
             }
 
             function populateFilters() {
-                // 使用检测到的 detectedKeys.channel 来获取值
                 const channelKey = detectedKeys.channel;
                 const channels = [...new Set(allData.map(item => item[channelKey]))];
 
@@ -245,7 +226,6 @@
                 }
 
                 const rowsHtml = data.map(row => {
-                    // 生成单元格
                     const cellsHtml = headers.map(header => {
                         let content = row[header] || '';
 
@@ -261,18 +241,12 @@
                         return `<td class="px-6 py-4">${content}</td>`;
                     }).join('');
 
-                    // --- 文件下载逻辑 ---
-                    // 1. 寻找服务器文件 (依赖 id 和 fingerprint)
-                    // 注意：这里我们通过检查 id 和 fingerprint 对应的实际列名(虽然通常是小写，但防万一)
-                    // 简单起见，假设 row 中肯定有 id 和 fingerprint (即使被隐藏)
-                    // 我们尝试多种大小写组合来获取值
                     const idVal = row['id'] || row['Id'] || row['ID'];
                     const fpVal = row['fingerprint'] || row['Fingerprint'];
 
                     const serverFileName = `${idVal}_${fpVal}.pdb`;
                     const serverFileUrl = PATH_TO_PDB_FOLDER + serverFileName;
 
-                    // 2. 生成下载文件名 (使用智能检测到的 key)
                     const channelVal = row[detectedKeys.channel];
                     const roundVal = row[detectedKeys.round] || '0';
                     const designVal = row[detectedKeys.design];
@@ -296,7 +270,6 @@
                 tableBody.innerHTML = rowsHtml;
             }
 
-            // ... 其余辅助函数 (updateHeaderIcons, renderPagination, handleDownload) 保持不变 ...
             function updateHeaderIcons() {
                 document.querySelectorAll('th.sortable').forEach(th => {
                     const icon = th.querySelector('.sort-icon');
@@ -327,8 +300,6 @@
                 const channelValue = channelFilter.value;
                 const searchTerm = searchInput.value.toLowerCase();
                 let filteredData = [...allData];
-
-                // 使用 detectedKeys.channel 进行过滤
                 if (channelValue) {
                     filteredData = filteredData.filter(row => row[detectedKeys.channel] === channelValue);
                 }
