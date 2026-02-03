@@ -9,59 +9,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f8fafc; /* gray-50 */
-        }
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: #f1f5f9; /* slate-100 */
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #94a3b8; /* slate-400 */
-            border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #64748b; /* slate-500 */
-        }
-        .seq-cell {
-            max-width: 250px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            cursor: pointer;
-        }
-        .seq-cell:hover {
-            white-space: normal;
-            overflow: visible;
-        }
-        /* Styles for sortable table headers */
-        .sortable {
-            cursor: pointer;
-            user-select: none;
-        }
-        .sortable:hover {
-            background-color: #e2e8f0; /* slate-200 */
-        }
-        .sort-icon {
-            display: inline-block;
-            width: 1em;
-            height: 1em;
-            margin-left: 0.5rem;
-            opacity: 0.5;
-            transition: opacity 0.2s;
-        }
-        .sortable.sorted .sort-icon {
-            opacity: 1;
-        }
-        /* Pagination and Download button styling */
-        .action-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .seq-cell { max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+        .seq-cell:hover { white-space: normal; overflow: visible; }
+        .sortable { cursor: pointer; user-select: none; }
+        .sortable:hover { background-color: #e2e8f0; }
+        .sort-icon { display: inline-block; width: 1em; height: 1em; margin-left: 0.5rem; opacity: 0.5; }
+        .sortable.sorted .sort-icon { opacity: 1; }
+        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body class="antialiased text-slate-700">
@@ -91,8 +50,8 @@
                 </select>
             </div>
              <div>
-                <label for="row-count" class="block text-sm font-medium text-slate-600 mb-1">Showing Results</label>
-                <p id="row-count" class="w-full p-2 text-slate-800 font-medium">Loading...</p>
+                <label for="row-count" class="block text-sm font-medium text-slate-600 mb-1">Status</label>
+                <p id="row-count" class="w-full p-2 text-slate-800 font-medium">Initializing...</p>
             </div>
         </div>
 
@@ -103,19 +62,19 @@
                 </thead>
                 <tbody id="data-table-body">
                     <tr>
-                        <td colspan="10" class="text-center p-8">
+                        <td colspan="100" class="text-center p-8">
                             <div id="loader" class="flex items-center justify-center space-x-2">
                                 <div class="w-4 h-4 rounded-full animate-pulse bg-indigo-500"></div>
                                 <div class="w-4 h-4 rounded-full animate-pulse bg-indigo-500" style="animation-delay: 0.2s;"></div>
                                 <div class="w-4 h-4 rounded-full animate-pulse bg-indigo-500" style="animation-delay: 0.4s;"></div>
-                                <span class="ml-2">Loading data...</span>
+                                <span class="ml-2" id="loader-text">Connecting to GitHub...</span>
                             </div>
                         </td>
                     </tr>
                 </tbody>
             </table>
         </div>
-        
+
         <div id="pagination-controls" class="flex items-center justify-between mt-4">
             <button id="prev-page-btn" class="action-btn pagination-btn px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:bg-indigo-300">Previous</button>
             <span id="page-indicator" class="text-sm text-slate-600"></span>
@@ -125,85 +84,147 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // --- Configuration ---
             const GITHUB_USERNAME = 'Heinrich2818';
             const GITHUB_REPO = 'Channel-Protein';
             const GITHUB_BRANCH = 'main';
-            
-            const BASE_URL = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH}/`;
-            
-            const PATH_TO_CSV = `${BASE_URL}Protein_data/csv/data.csv`;
-            const PATH_TO_PDB_FOLDER = `${BASE_URL}Protein_data/pdb/`; // MUST end with a slash!
 
-            const HIDDEN_COLUMNS = ['id', 'fingerprint']; 
+            // 目标文件夹路径 (相对于仓库根目录)
+            const CSV_FOLDER_PATH = 'Protein_data/csv';
 
+            // GitHub API 用于读取文件夹内容
+            const API_URL = `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH ? 'contents/' + CSV_FOLDER_PATH + '?ref=' + GITHUB_BRANCH : 'contents/' + CSV_FOLDER_PATH}`;
+
+            const BASE_RAW_URL = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/${GITHUB_BRANCH}/`;
+            const PATH_TO_PDB_FOLDER = `${BASE_RAW_URL}Protein_data/pdb/`;
+
+            // 定义隐形列 (全小写)
+            const HIDDEN_COLUMNS = ['id', 'fingerprint'];
+
+            // DOM Elements
             const tableBody = document.getElementById('data-table-body');
             const tableHeadRow = document.querySelector('thead tr');
             const channelFilter = document.getElementById('channel-filter');
             const searchInput = document.getElementById('search-input');
             const recordsSelect = document.getElementById('records-select');
             const loader = document.getElementById('loader');
+            const loaderText = document.getElementById('loader-text');
             const rowCountDisplay = document.getElementById('row-count');
             const paginationControls = document.getElementById('pagination-controls');
             const prevPageBtn = document.getElementById('prev-page-btn');
             const nextPageBtn = document.getElementById('next-page-btn');
             const pageIndicator = document.getElementById('page-indicator');
 
-            // Data and state storage
+            // State
             let allData = [];
             let currentFilteredAndSortedData = [];
-            let headers = []; // 这里只存储需要"显示"的表头
+            let headers = [];
             let sortKey = 'design';
             let sortDirection = 'asc';
             let recordsToShow = Infinity;
             let currentPage = 1;
 
+            // 自动检测到的关键列名 (解决大小写问题)
+            let detectedKeys = {
+                channel: 'Channel', // 默认值
+                round: 'round',
+                design: 'design',
+                n: 'n'
+            };
+
             async function loadData() {
                 try {
-                    const response = await fetch(PATH_TO_CSV);
-                    if (!response.ok) {
-                        throw new Error(`Network response was not ok: ${response.statusText}. Check if the file path is correct.`);
+                    loaderText.textContent = "Scanning for CSV files...";
+
+                    // 1. 请求 GitHub API 获取文件列表
+                    const apiResponse = await fetch(API_URL);
+                    if (!apiResponse.ok) {
+                        if (apiResponse.status === 403) throw new Error("GitHub API rate limit exceeded. Please try again later.");
+                        if (apiResponse.status === 404) throw new Error("Folder not found. Check CSV_FOLDER_PATH.");
+                        throw new Error(`GitHub API Error: ${apiResponse.statusText}`);
                     }
-                    const csvText = await response.text();
-                    parseCSV(csvText);
+                    const files = await apiResponse.json();
+
+                    // 2. 筛选出 .csv 文件
+                    const csvFiles = files.filter(file => file.name.endsWith('.csv'));
+                    if (csvFiles.length === 0) throw new Error("No CSV files found in the folder.");
+
+                    loaderText.textContent = `Found ${csvFiles.length} files. Downloading...`;
+
+                    // 3. 并行下载所有 CSV
+                    const fetchPromises = csvFiles.map(file => fetch(file.download_url).then(res => res.text()));
+                    const csvContents = await Promise.all(fetchPromises);
+
+                    // 4. 解析并合并数据
+                    processAllCSVs(csvContents);
+
                     populateFilters();
                     filterAndSortData();
+
                 } catch (error) {
-                    console.error("Failed to load or parse CSV:", error);
+                    console.error("Error:", error);
                     tableBody.innerHTML = `<tr><td colspan="100" class="text-center p-8 text-red-500 font-semibold">${error.message}</td></tr>`;
                 } finally {
                     loader.style.display = 'none';
                 }
             }
 
-            function parseCSV(text) {
-                const lines = text.trim().replace(/\r/g, '').split('\n');
-                if (lines.length < 2) return;
+            function processAllCSVs(csvContents) {
+                if (csvContents.length === 0) return;
 
-                const allHeaders = lines[0].split(',').map(h => h.trim());
+                // 使用第一个文件来确定表头和关键列名
+                const firstFileLines = csvContents[0].trim().replace(/\r/g, '').split('\n');
+                const allHeaders = firstFileLines[0].split(',').map(h => h.trim());
 
+                // --- 智能列名检测 (Smart Key Detection) ---
+                // 遍历表头，找到实际使用的列名 (忽略大小写)
+                allHeaders.forEach(h => {
+                    const lowerH = h.toLowerCase();
+                    if (lowerH === 'channel') detectedKeys.channel = h;
+                    if (lowerH === 'round') detectedKeys.round = h;
+                    if (lowerH === 'design') detectedKeys.design = h;
+                    if (lowerH === 'n') detectedKeys.n = h;
+                });
+                console.log("Detected Keys:", detectedKeys);
+
+                // 过滤显示表头
                 headers = allHeaders.filter(h => !HIDDEN_COLUMNS.includes(h.toLowerCase()));
 
+                // 渲染表头
                 const displayHeaders = [...headers, 'Actions'];
-                
                 tableHeadRow.innerHTML = displayHeaders.map(header => {
-                    if (header === 'Actions') {
-                        return `<th scope="col" class="px-6 py-3">${header}</th>`;
-                    }
+                    if (header === 'Actions') return `<th scope="col" class="px-6 py-3">${header}</th>`;
                     return `<th scope="col" class="px-6 py-3 sortable" data-key="${header}">${header}<span class="sort-icon"></span></th>`;
                 }).join('');
-                allData = lines.slice(1).map(line => {
-                    const values = line.split(','); 
-                    const rowObject = {};
-                    allHeaders.forEach((header, index) => {
-                        rowObject[header] = values[index] ? values[index].trim() : '';
-                    });
-                    
-                    return rowObject;
+
+                // 解析所有文件的内容
+                allData = [];
+                csvContents.forEach(content => {
+                    const lines = content.trim().replace(/\r/g, '').split('\n');
+                    // 跳过每个文件的第一行 (表头)
+                    const dataLines = lines.slice(1);
+
+                    const fileData = dataLines.map(line => {
+                        const values = line.split(',');
+                        // 如果这一行是空的，跳过
+                        if (values.length < headers.length) return null;
+
+                        const rowObject = {};
+                        allHeaders.forEach((header, index) => {
+                            rowObject[header] = values[index] ? values[index].trim() : '';
+                        });
+                        return rowObject;
+                    }).filter(item => item !== null);
+
+                    allData = allData.concat(fileData);
                 });
             }
 
             function populateFilters() {
-                const channels = [...new Set(allData.map(item => item.channel))];
+                // 使用检测到的 detectedKeys.channel 来获取值
+                const channelKey = detectedKeys.channel;
+                const channels = [...new Set(allData.map(item => item[channelKey]))];
+
                 channelFilter.innerHTML = '<option value="">All Channels</option>';
                 channels.sort().forEach(channel => {
                     if(channel) {
@@ -224,34 +245,46 @@
                 }
 
                 const rowsHtml = data.map(row => {
+                    // 生成单元格
                     const cellsHtml = headers.map(header => {
                         let content = row[header] || '';
-                        
+
                         if (header.toLowerCase() === 'seq') {
                             let displayContent = content;
-                            if (content.includes('/')) {
-                                displayContent = content.split('/')[1] || '';
-                            }
+                            if (content.includes('/')) displayContent = content.split('/')[1] || '';
                             return `<td class="px-6 py-4 seq-cell" title="${displayContent}">${displayContent}</td>`;
                         }
-                        
+
                         if (!isNaN(parseFloat(content)) && content.includes('.')) {
                             content = parseFloat(content).toFixed(4);
                         }
                         return `<td class="px-6 py-4">${content}</td>`;
                     }).join('');
 
-                    const serverFileName = `${row.id}_${row.fingerprint}.pdb`; 
+                    // --- 文件下载逻辑 ---
+                    // 1. 寻找服务器文件 (依赖 id 和 fingerprint)
+                    // 注意：这里我们通过检查 id 和 fingerprint 对应的实际列名(虽然通常是小写，但防万一)
+                    // 简单起见，假设 row 中肯定有 id 和 fingerprint (即使被隐藏)
+                    // 我们尝试多种大小写组合来获取值
+                    const idVal = row['id'] || row['Id'] || row['ID'];
+                    const fpVal = row['fingerprint'] || row['Fingerprint'];
+
+                    const serverFileName = `${idVal}_${fpVal}.pdb`;
                     const serverFileUrl = PATH_TO_PDB_FOLDER + serverFileName;
 
-                    const roundVal = row.round || row.Round || '0'; 
-                    const userDownloadName = `${row.Channel}_R${roundVal}_design${row.design}_n${row.n}.pdb`;
+                    // 2. 生成下载文件名 (使用智能检测到的 key)
+                    const channelVal = row[detectedKeys.channel];
+                    const roundVal = row[detectedKeys.round] || '0';
+                    const designVal = row[detectedKeys.design];
+                    const nVal = row[detectedKeys.n];
+
+                    const userDownloadName = `${channelVal}_R${roundVal}_design${designVal}_n${nVal}.pdb`;
 
                     const actionsCell = `
                         <td class="px-6 py-4 flex items-center space-x-2">
-                            <button 
-                                data-pdb-url="${serverFileUrl}" 
-                                data-pdb-name="${userDownloadName}" 
+                            <button
+                                data-pdb-url="${serverFileUrl}"
+                                data-pdb-name="${userDownloadName}"
                                 class="download-btn action-btn text-green-600 hover:text-green-900 font-medium text-sm">
                                 Download .pdb
                             </button>
@@ -263,6 +296,7 @@
                 tableBody.innerHTML = rowsHtml;
             }
 
+            // ... 其余辅助函数 (updateHeaderIcons, renderPagination, handleDownload) 保持不变 ...
             function updateHeaderIcons() {
                 document.querySelectorAll('th.sortable').forEach(th => {
                     const icon = th.querySelector('.sort-icon');
@@ -280,31 +314,28 @@
                     paginationControls.style.display = 'none';
                     return;
                 }
-                
                 paginationControls.style.display = 'flex';
                 const totalPages = Math.ceil(totalItems / itemsPerPage);
-
                 pageIndicator.textContent = `Page ${currentPage} of ${totalPages}`;
                 prevPageBtn.disabled = currentPage === 1;
                 nextPageBtn.disabled = currentPage === totalPages;
             }
 
             function filterAndSortData(resetPage = false) {
-                if(resetPage) {
-                    currentPage = 1;
-                }
+                if(resetPage) currentPage = 1;
 
                 const channelValue = channelFilter.value;
                 const searchTerm = searchInput.value.toLowerCase();
                 let filteredData = [...allData];
 
+                // 使用 detectedKeys.channel 进行过滤
                 if (channelValue) {
-                    filteredData = filteredData.filter(row => row.Channel === channelValue);
+                    filteredData = filteredData.filter(row => row[detectedKeys.channel] === channelValue);
                 }
 
                 if (searchTerm) {
                     filteredData = filteredData.filter(row => {
-                        const seqValue = row.seq || '';
+                        const seqValue = row.seq || row.Seq || row.SEQ || '';
                         let targetSeq = '';
                         if (seqValue.includes('/')) {
                             targetSeq = (seqValue.split('/')[1] || '').toLowerCase();
@@ -327,12 +358,10 @@
                     } else {
                         comparison = (valA || '').localeCompare(valB || '');
                     }
-                    
                     return sortDirection === 'asc' ? comparison : -comparison;
                 });
-                
+
                 currentFilteredAndSortedData = filteredData;
-                
                 let paginatedData;
                 if (recordsToShow === Infinity) {
                     paginatedData = currentFilteredAndSortedData;
@@ -340,9 +369,8 @@
                     const startIndex = (currentPage - 1) * recordsToShow;
                     paginatedData = currentFilteredAndSortedData.slice(startIndex, startIndex + recordsToShow);
                 }
-                
-                rowCountDisplay.textContent = `Showing ${paginatedData.length} of ${currentFilteredAndSortedData.length} results`;
 
+                rowCountDisplay.textContent = `Showing ${paginatedData.length} of ${currentFilteredAndSortedData.length} results`;
                 renderTable(paginatedData);
                 renderPagination(currentFilteredAndSortedData.length, recordsToShow);
             }
@@ -351,69 +379,49 @@
                 const originalText = buttonElement.textContent;
                 buttonElement.textContent = 'Downloading...';
                 buttonElement.disabled = true;
-
                 try {
                     const response = await fetch(url);
-                    if (!response.ok) {
-                        throw new Error(`Network response was not ok: ${response.statusText}. Check the file path and ensure the file exists in your repository.`);
-                    }
+                    if (!response.ok) throw new Error(`Network response was not ok.`);
                     const blob = await response.blob();
                     const objectUrl = URL.createObjectURL(blob);
-
                     const a = document.createElement('a');
                     a.href = objectUrl;
                     a.download = filename;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
-
                     URL.revokeObjectURL(objectUrl);
                 } catch (error) {
                     console.error('Download failed:', error);
-                    alert(`Failed to download ${filename}. Details: ${error.message}`);
+                    alert(`Failed to download ${filename}.`);
                 } finally {
                     buttonElement.textContent = originalText;
                     buttonElement.disabled = false;
                 }
             }
 
-            // --- Event Listeners ---
+            // Listeners
             channelFilter.addEventListener('change', () => filterAndSortData(true));
             searchInput.addEventListener('input', () => filterAndSortData(true));
             recordsSelect.addEventListener('change', (e) => {
                 recordsToShow = e.target.value === 'Infinity' ? Infinity : parseInt(e.target.value, 10);
                 filterAndSortData(true);
             });
-
             tableHeadRow.addEventListener('click', (e) => {
                 const header = e.target.closest('th.sortable');
                 if (!header) return;
-
                 const newSortKey = header.dataset.key;
-                if (sortKey === newSortKey) {
-                    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-                } else {
-                    sortKey = newSortKey;
-                    sortDirection = 'asc';
-                }
+                if (sortKey === newSortKey) sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+                else { sortKey = newSortKey; sortDirection = 'asc'; }
                 filterAndSortData(true);
             });
-
             prevPageBtn.addEventListener('click', () => {
-                if (currentPage > 1) {
-                    currentPage--;
-                    filterAndSortData();
-                }
+                if (currentPage > 1) { currentPage--; filterAndSortData(); }
             });
-
             nextPageBtn.addEventListener('click', () => {
                 const totalPages = Math.ceil(currentFilteredAndSortedData.length / recordsToShow);
-                if (currentPage < totalPages) {
-                    currentPage++;
-                    filterAndSortData();
-                }
+                if (currentPage < totalPages) { currentPage++; filterAndSortData(); }
             });
-
             tableBody.addEventListener('click', (e) => {
                 if (e.target.classList.contains('download-btn')) {
                     const pdbUrl = e.target.getAttribute('data-pdb-url');
@@ -422,10 +430,9 @@
                 }
             });
 
-            // --- Initial Load ---
+            // Start
             loadData();
         });
     </script>
-
 </body>
 </html>
